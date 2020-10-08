@@ -1,25 +1,18 @@
+const { Subject } = require('rxjs')
+const { concatMap, delay } = require('rxjs/operators')
+
 const { MessageEmbed } = require('discord.js')
 const { prefix, colors } = require('../config.json')
 
 const reactMessage = require('../utils/reactMessage')
 
-cmdQueue = []
-handlingCommand = false
-
-var waitToRunCommand = function() {
-  setTimeout(runCommand, 300) 
-}
-
-var runCommand = function() {
-  handlingCommand = true
-  const cmdFunc = cmdQueue.shift()
-  cmdFunc.cmd.run(cmdFunc.bot, cmdFunc.message, cmdFunc.args, done)
-}
-
-var done = function() {
-    handlingCommand = false
-    if (cmdQueue.length > 0) waitToRunCommand()
-}
+const cmdQueue = new Subject()
+cmdQueue
+  .pipe(
+    concatMap((cmdFunc) => cmdFunc.cmd.run(cmdFunc.bot, cmdFunc.message, cmdFunc.args)),
+    delay(300)
+  )
+  .subscribe()
 
 module.exports = async (bot, webhook, message) => {
   if (message.author.bot) return // Ignore all bots
@@ -59,10 +52,7 @@ module.exports = async (bot, webhook, message) => {
       return
     }
     // ----- Push to queue and wait for other jobs to finish -----
-    cmdQueue.push({cmd: cmd, bot: bot, message: message, args: args})
-    if (!handlingCommand) {
-      waitToRunCommand()
-    }
+    cmdQueue.next({ cmd: cmd, bot: bot, message: message, args: args })
   } else {
     // -------------------- Reaction system --------------------
     reactMessage(message.guild.id, message)
